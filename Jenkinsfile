@@ -8,6 +8,10 @@ pipeline {
     environment {
         IMAGE_NAME = 'hassankhan786/prime-video-clone'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
+        // GitHub CD repository ka URL
+        CD_REPO_URL = 'https://github.com/Hassan-khan-007/Clone-Prime-video-CD.git'
+        // Jenkins credentials ID jo aapne GitHub Token ke liye banayi hai
+        GIT_CREDENTIALS_ID = 'github-credentials'
     }
     
     stages {
@@ -98,6 +102,36 @@ pipeline {
                                 docker push ${IMAGE_NAME}:${BUILD_NUMBER}
                             """
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Update GitOps CD Repository') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: "${GIT_CREDENTIALS_ID}", 
+                                                      usernameVariable: 'GIT_USER', 
+                                                      passwordVariable: 'GIT_TOKEN')]) {
+                        sh """
+                            echo "Configuring Git Identity..."
+                            git config --global user.name "Hassan Khan"
+                            git config --global user.email "hassanakhan79@gmail.com"
+
+                            echo "Cloning CD Repository..."
+                            git clone ${https://github.com/Hassan-khan-007/Clone-Prime-video-CD.git} cd-repo
+
+                            cd cd-repo
+
+                            echo "Updating Kubernetes Image Tag..."
+                            # Ye line deployment.yaml file ke andar image tag ko naye build number se replace kar degi
+                            sed -i 's|image:.*|image: ${IMAGE_NAME}:${BUILD_NUMBER}|g' manifests/deployment.yaml
+
+                            echo "Committing and Pushing changes to CD repo..."
+                            git add .
+                            git commit -m "CI: Update image tag to build-${BUILD_NUMBER} [skip ci]"
+                            git push https://${GIT_TOKEN}@github.com/Hassan-khan-007/Clone-Prime-video-CD.git main
+                        """
                     }
                 }
             }
