@@ -6,7 +6,7 @@ pipeline {
     }
     
     environment {
-        IMAGE_NAME = 'dockerhubhassankhan786/prime-video-clone'
+        IMAGE_NAME = 'hassankhan786/prime-video-clone'
         DOCKER_CREDENTIALS_ID = 'dockerhub'
     }
     
@@ -40,7 +40,7 @@ pipeline {
                 script {
                     timeout(time: 5, unit: 'MINUTES') {
                         def qg = waitForQualityGate()
-              
+            
                         if (qg.status != 'OK') {
                             error "Pipeline aborted because Quality Gate failed: ${qg.status}"
                         } else {
@@ -53,31 +53,52 @@ pipeline {
         
         stage('OWASP Security Scan') {
             steps {
-                // Project ki dependencies ko scan karega
-                dependencyCheck additionalArguments: '--scan . --disableAssembly', odcInstallation: 'OWASP-Check'
-                
-                // Scan reports ko Jenkins dashboard par publish karega
+                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
+                    dependencyCheck additionalArguments: "--scan . --disableAssembly --nvdApiKey ${env.NVD_API_KEY}", odcInstallation: 'OWASP-Check'
+                }
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
         
-        stage('Build and Push Docker Image') {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh """
+                        # Build and explicitly load the image into local docker daemon using Buildx
+                        docker build --load -t ${IMAGE_NAME}:${BUILD_NUMBER} .
+                    """
+                }
+            }
+        }
+        
+        stage('Trivy Image Scan') {
+            steps {
+                script {
+                    // Added --dns=8.8.8.8 so container can resolve network and download DB successfully
+                    sh """
+                        docker run --rm --dns=8.8.8.8 -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_NAME}:${BUILD_NUMBER}
+                    """
+                }
+            }
+        }
+        
+        stage('Push Docker Image') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", 
-                                                        usernameVariable: 'DOCKER_USER', 
-                                                        passwordVariable: 'DOCKER_PASS')]) {
-                        // Double quotes (""") use karne se Groovy variables (${IMAGE_NAME}, ${BUILD_NUMBER}) sahi se resolve honge
+                                                usernameVariable: 'DOCKER_USER', 
+                                                passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            # Build docker image using build number tag
-                            docker build --no-cache -t ${IMAGE_NAME}:${BUILD_NUMBER} .
-                            
                             # Login to Docker Hub securely
                             echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
-                            
-                            # Push image to Docker Hub
-                            docker push ${IMAGE_NAME}:${BUILD_NUMBER}
                         """
+                        
+                        // Retry block to handle network timeout safely during push
+                        retry(3) {
+                            sh """
+                                docker push ${IMAGE_NAME}:${BUILD_NUMBER}
+                            """
+                        }
                     }
                 }
             }
