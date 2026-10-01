@@ -53,9 +53,8 @@ pipeline {
         
         stage('OWASP Security Scan') {
             steps {
-                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                    dependencyCheck additionalArguments: "--scan . --disableAssembly --nvdApiKey ${env.NVD_API_KEY}", odcInstallation: 'OWASP-Check'
-                }
+                // -n flag use karne se yeh local database ka use karega aur naya download nahi karega
+                dependencyCheck additionalArguments: '-n --scan . --disableAssembly', odcInstallation: 'OWASP-Check'
                 dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
             }
         }
