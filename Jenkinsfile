@@ -106,20 +106,21 @@ pipeline {
                     withCredentials([usernamePassword(credentialsId: "${GIT_CREDENTIALS_ID}", 
                                                       usernameVariable: 'GIT_USER', 
                                                       passwordVariable: 'GIT_TOKEN')]) {
-                        sh """
+                        // Yahan triple single quotes (''' ... ''') use kiye hain taaki Groovy syntax error na de
+                        sh '''
                             git config --global user.name "Hassan Khan"
                             git config --global user.email "hassanakhan79@gmail.com"
 
-                            git clone ${https://github.com/Hassan-khan-007/Clone-Prime-video-CD.git} cd-repo
+                            git clone https://${GIT_TOKEN}@github.com/Hassan-khan-007/Clone-Prime-video-CD.git cd-repo
 
                             cd cd-repo
 
-                            sed -i 's|image:.*|image: ${IMAGE_NAME}:${BUILD_NUMBER}|g' manifests/deployment.yaml
+                            sed -i "s|image:.*|image: ${IMAGE_NAME}:${BUILD_NUMBER}|g" manifests/deployment.yaml
 
                             git add .
                             git commit -m "CI: Update image tag to build-${BUILD_NUMBER} [skip ci]"
-                            git push https://${GIT_TOKEN}@github.com/Hassan-khan-007/Clone-Prime-video-CD.git main
-                        """
+                            git push origin main
+                        '''
                     }
                 }
             }
